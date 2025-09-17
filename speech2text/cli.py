@@ -2,6 +2,7 @@ import click
 import json
 from pathlib import Path
 
+from google.longrunning.operations_pb2 import Operation, GetOperationRequest
 from speech2text.logger_setup import log
 from speech2text.config import RECOGNITION_CONFIG, GCS_BUCKET_NAME
 from speech2text import speech_service
@@ -44,7 +45,7 @@ def start(audio_path: str):
         return
 
     # 2. Start transcription job with GCS URI
-    operation = speech_service.start_transcription_job(
+    operation: Operation = speech_service.start_transcription_job(
         gcs_uri=gcs_uri,
         config=RECOGNITION_CONFIG
     )
@@ -53,6 +54,7 @@ def start(audio_path: str):
         job_data = {
             "job_name": job_name,
             "operation_name": operation.operation.name,
+            "operation_name_field_number": operation.operation.NAME_FIELD_NUMBER,
             "status": "RUNNING",
             "audio_file": str(audio_path),
             "gcs_uri": gcs_uri
@@ -78,19 +80,31 @@ def check(job_name: str):
         job_data = json.load(f)
 
     operation_name = job_data.get("operation_name")
-    if not operation_name:
+    operation_name_field_number = job_data.get("operation_name_field_number")
+    
+    operation_request = GetOperationRequest(
+        name=operation_name,
+        #NAME_FIELD_NUMBER=operation_name_field_number
+    )
+    if not operation_request.name:
         log.error(f"[bold red]'operation_name' not found in {job_file}[/bold red]")
         return
 
-    operation = speech_service.check_job_status(operation_name)
+    operation: Operation = speech_service.check_job_status(operation_request)
 
-    if operation and operation.done():
+    if operation and operation.done:
         log.info(f"[bold green]Job '{job_name}' is DONE.[/bold green]")
         job_data["status"] = "DONE"
-        
-        transcript = ""
-        for result in operation.result().results:
-            transcript += result.alternatives[0].transcript + "\n"
+        response = operation.result(timeout=90)
+        transcript_builder = []
+        # Each result is for a consecutive portion of the audio. Iterate through
+        # them to get the transcripts for the entire audio file.
+        for result in response.results:
+            # The first alternative is the most likely one for this portion.
+            transcript_builder.append(f"\nTranscript: {result.alternatives[0].transcript}")
+            transcript_builder.append(f"\nConfidence: {result.alternatives[0].confidence}")
+
+        transcript = "".join(transcript_builder)
         
         job_data["transcript"] = transcript.strip()
         
