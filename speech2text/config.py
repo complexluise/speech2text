@@ -14,6 +14,6 @@ from google.cloud import speech
 RECOGNITION_CONFIG = {
     "encoding": speech.RecognitionConfig.AudioEncoding.LINEAR16,
     "sample_rate_hertz": 16000,
-    "language_code": "en-US",
+    "language_code": "es-MX",
     # Add other options like 'profanity_filter', 'enable_automatic_punctuation', etc.
 }
