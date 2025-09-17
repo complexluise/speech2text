@@ -46,10 +46,11 @@ if (-not $resolvedInputFile) {
 if ([string]::IsNullOrEmpty($OutputFile)) {
     $inputFileObject = Get-Item $resolvedInputFile
     $baseName = $inputFileObject.BaseName
-    $extension = $inputFileObject.Extension
     $directory = $inputFileObject.DirectoryName
-    $OutputFile = Join-Path -Path $directory -ChildPath "${baseName}_sample${extension}"
+    $OutputFile = Join-Path -Path $directory -ChildPath "${baseName}_sample.wav"
 } else {
+    # If output file is specified, ensure it has .wav extension
+    $OutputFile = [System.IO.Path]::ChangeExtension($OutputFile, "wav")
     $OutputFile = Resolve-Path -Path $OutputFile -ErrorAction SilentlyContinue
     if (!$OutputFile) {
         # If a relative path was provided that doesn't exist, create it relative to current location
@@ -67,7 +68,7 @@ Write-Host "Creating 5-minute audio sample..."
 
 # Use -c copy to avoid re-encoding. It's much faster.
 # Use -y to overwrite the output file without prompting.
-$ffmpegCommand = "ffmpeg -i `"$resolvedInputFile`" -ss 00:00:00 -t $duration -c copy `"$OutputFile`" -y"
+$ffmpegCommand = "ffmpeg -i `"$resolvedInputFile`" -ar 16000 -ac 1 -ss 00:00:00 -t $duration `"$OutputFile`" -y"
 
 Invoke-Expression -Command $ffmpegCommand -ErrorAction Stop
 
