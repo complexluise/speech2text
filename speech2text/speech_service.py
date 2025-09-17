@@ -1,4 +1,5 @@
 from google.cloud import speech, storage
+from google.longrunning.operations_pb2 import GetOperationRequest, Operation
 from speech2text.logger_setup import log
 
 def upload_to_gcs(local_file_path: str, bucket_name: str, destination_blob_name: str):
@@ -26,7 +27,7 @@ def start_transcription_job(gcs_uri: str, config: dict):
     recognition_config = speech.RecognitionConfig(**config)
 
     try:
-        operation = client.long_running_recognize(
+        operation: Operation = client.long_running_recognize(
             config=recognition_config, audio=audio
         )
         log.info("[bold green]API call successful. Operation started.[/bold green]")
@@ -35,12 +36,12 @@ def start_transcription_job(gcs_uri: str, config: dict):
         log.error(f"[bold red]API call failed:[/bold red] {e}")
         return None
 
-def check_job_status(operation_name: str):
+def check_job_status(operation_request: GetOperationRequest):
     """Checks the status of a long-running recognition operation."""
-    log.info(f"[bold blue]Checking status for operation:[/bold blue] {operation_name}")
+    log.info(f"[bold blue]Checking status for operation:[/bold blue] {operation_request.name}")
     client = speech.SpeechClient()
     try:
-        operation = client.get_operation(name=operation_name) # Use get_operation
+        operation = client.get_operation(request=operation_request)
         return operation
     except Exception as e:
         log.error(f"[bold red]Failed to get operation status:[/bold red] {e}")
