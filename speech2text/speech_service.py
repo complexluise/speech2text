@@ -36,13 +36,3 @@ def start_transcription_job(gcs_uri: str, config: dict):
         log.error(f"[bold red]API call failed:[/bold red] {e}")
         return None
 
-def check_job_status(operation_request: GetOperationRequest):
-    """Checks the status of a long-running recognition operation."""
-    log.info(f"[bold blue]Checking status for operation:[/bold blue] {operation_request.name}")
-    client = speech.SpeechClient()
-    try:
-        operation = client.get_operation(request=operation_request)
-        return operation
-    except Exception as e:
-        log.error(f"[bold red]Failed to get operation status:[/bold red] {e}")
-        return None
