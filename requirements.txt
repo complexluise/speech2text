@@ -1,4 +1,8 @@
-click
-rich
-google-cloud-speech
-google-cloud-storage
+click==8.2.1
+google-cloud-speech==2.33.0
+google-cloud-storage==3.4.0
+google-generativeai==0.8.5
+python-dotenv==1.1.1
+pytest==8.4.2
+pytest-mock==3.15.1
+rich=14.1.0
