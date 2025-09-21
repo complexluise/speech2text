@@ -1,10 +1,12 @@
 import click
 import json
 from pathlib import Path
+import glob
+from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from speech2text.logger_setup import log
 from speech2text.config import RECOGNITION_CONFIG, GCS_BUCKET_NAME
-from speech2text import speech_service
+from speech2text import speech_service, llm_service
 
 # Define the path to the jobs directory
 JOBS_DIR = Path(__file__).parent.parent / "jobs"
@@ -12,8 +14,104 @@ JOBS_DIR.mkdir(exist_ok=True)
 
 @click.group()
 def cli():
-    """A CLI tool to transcribe audio files using Google Speech-to-Text."""
+    """A CLI tool to transcribe and process audio files."""
     pass
+
+@cli.command()
+@click.argument("job_directory", type=click.Path(exists=True, file_okay=False, resolve_path=True))
+@click.option("--output", type=click.Path(file_okay=True, dir_okay=False, resolve_path=True), default=None, help="Path for the output Markdown file.")
+@click.option("--context-words", default=100, help="Number of words from the end of the document to use as context for the next chunk.")
+def post_process(job_directory: str, output: str, context_words: int):
+    """
+    Combines, corrects, and structures transcription JSON files into a Markdown document using an LLM.
+    """
+    log.info(f"Starting post-processing for job directory: {job_directory}")
+    job_dir = Path(job_directory)
+
+    # --- 1. Find and sort transcription part files ---
+    json_files = sorted(glob.glob(f"{job_dir}/*_part_*.json"))
+    if not json_files:
+        log.error(f"[bold red]No '_part_*.json' files found in {job_dir}.[/bold red]")
+        log.error("Please specify a directory containing transcription parts.")
+        return
+
+    log.info(f"Found {len(json_files)} transcription parts to process.")
+
+    # --- 2. Phase 1: Individual Correction ---
+    corrected_chunks = []
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        transient=True,
+    ) as progress:
+        task = progress.add_task("Phase 1: Correcting text chunks...", total=len(json_files))
+        for i, file_path in enumerate(json_files):
+            progress.update(task, description=f"Phase 1: Correcting chunk {i+1}/{len(json_files)}")
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    transcript = data.get("transcript", "")
+                    if transcript:
+                        corrected = llm_service.correct_text_chunk(transcript)
+                        if corrected:
+                            corrected_chunks.append(corrected)
+            except (json.JSONDecodeError, FileNotFoundError) as e:
+                log.warning(f"Could not read or parse {file_path}: {e}")
+        progress.update(task, completed=True, description="Phase 1 Complete.")
+    
+    if not corrected_chunks:
+        log.error("[bold red]No text could be extracted or corrected from the JSON files.[/bold red]")
+        return
+
+    log.info("All text chunks corrected successfully.")
+
+    # --- 3. Phase 2: Iterative Structuring and Joining ---
+    final_document = ""
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        transient=True,
+    ) as progress:
+        task = progress.add_task("Phase 2: Structuring document...", total=len(corrected_chunks))
+        
+        # Initialize document with the first chunk
+        progress.update(task, description="Phase 2: Structuring initial chunk...")
+        final_document = llm_service.structure_initial_chunk(corrected_chunks[0])
+        progress.update(task, advance=1)
+
+        # Iteratively join the rest of the chunks
+        for i, new_chunk in enumerate(corrected_chunks[1:]):
+            progress.update(task, description=f"Phase 2: Structuring and joining chunk {i+2}/{len(corrected_chunks)}")
+            
+            # Get the last ~N words as context
+            context = " ".join(final_document.split()[-context_words:])
+            
+            structured_addition = llm_service.structure_and_join_chunk(
+                previous_context=context,
+                new_chunk=new_chunk
+            )
+            
+            if structured_addition:
+                final_document += "\n\n" + structured_addition
+            
+            progress.update(task, advance=1)
+        progress.update(task, completed=True, description="Phase 2 Complete.")
+
+    log.info("[bold green]Document structuring complete.[/bold green]")
+
+    # --- 4. Save the final document ---
+    if output:
+        output_path = Path(output)
+    else:
+        output_path = job_dir.parent / f"{job_dir.name}.md"
+    
+    try:
+        with open(output_path, "w", encoding="utf-8") as f:
+            f.write(final_document)
+        log.info(f"Final Markdown document saved to: {output_path}")
+    except IOError as e:
+        log.error(f"[bold red]Failed to write output file to {output_path}:[/bold red] {e}")
+
 
 @cli.command()
 @click.argument("audio_path", type=click.Path(exists=True))

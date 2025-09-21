@@ -1,10 +1,19 @@
 
+import os
+from dotenv import load_dotenv
 from google.cloud import speech
+
+# Load environment variables from .env file
+load_dotenv()
+
+# --- API Keys ---
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
 
 # --- GCS Configuration ---
 # IMPORTANT: Create a GCS bucket and put its name here.
 # https://cloud.google.com/storage/docs/creating-buckets
-GCS_BUCKET_NAME = "bucket-for-everything"
+GCS_BUCKET_NAME = os.getenv("GCS_BUCKET_NAME")
 
 
 # --- Recognition Configuration ---
