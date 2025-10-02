@@ -1,13 +1,15 @@
 # Speech-to-Text CLI
 
-Esta es una herramienta de línea de comandos (CLI) para transcribir archivos de audio a texto.
+Esta es una herramienta de línea de comandos (CLI) para transcribir archivos de audio a texto, y luego limpiar y estructurar la transcripción en un documento coherente.
 
 ## Requisitos
 
-- Python 3.8 o superior
+- Python 3.8 o superior.
 - `ffmpeg` para la manipulación de audio.
+- Una cuenta de Google Cloud con la API "Speech-to-Text" habilitada.
+- Una clave (API Key) de Google Gemini para el post-procesamiento del texto.
 
-## Instalación
+## 1. Instalación
 
 1.  **Clonar el repositorio:**
     ```bash
@@ -15,7 +17,16 @@ Esta es una herramienta de línea de comandos (CLI) para transcribir archivos de
     cd speech2text
     ```
 
-2.  **Crear un entorno virtual e instalar dependencias:**
+2.  **Instalar ffmpeg:**
+    Asegúrate de que `ffmpeg` esté instalado y disponible en el PATH de tu sistema. Puedes descargarlo desde [ffmpeg.org](https://ffmpeg.org/download.html).
+
+3.  **Autenticación con Google Cloud:**
+    Debes autenticar tu entorno para usar los servicios de Google Cloud. La forma recomendada es usar la CLI de `gcloud`:
+    ```bash
+    gcloud auth application-default login
+    ```
+
+4.  **Crear un entorno virtual e instalar dependencias:**
     ```bash
     python -m venv .venv
     # Activar el entorno virtual
@@ -26,45 +37,62 @@ Esta es una herramienta de línea de comandos (CLI) para transcribir archivos de
     pip install -r requirements.txt
     ```
 
-3.  **Instalar ffmpeg:**
-    Asegúrate de que `ffmpeg` esté instalado y disponible en el PATH de tu sistema. Puedes descargarlo desde [ffmpeg.org](https://ffmpeg.org/download.html).
+## 2. Configuración
 
-## Uso
+Este proyecto necesita un archivo de configuración para funcionar.
 
-El flujo de trabajo principal es dividir un archivo de audio grande en partes más pequeñas y luego procesar cada parte para obtener la transcripción.
+1.  Crea un archivo llamado `.env` en la raíz del proyecto.
+2.  Abre el archivo y pega las siguientes líneas. **Debes reemplazar los valores de ejemplo** con el nombre de tu "bucket" de Google Cloud Storage y tu clave de API de Gemini.
 
-### 1. Dividir un archivo de audio
+    ```
+    GCS_BUCKET_NAME="tu-bucket-de-gcs-aqui"
+    GEMINI_API_KEY="tu-api-key-de-gemini-aqui"
+    ```
 
-Usa el script `split_audio.ps1` para dividir un archivo de audio en segmentos de una duración específica. Los archivos resultantes se guardarán en el mismo directorio que el archivo de origen.
+## 3. Uso
 
-**Sintaxis:**
-```powershell
-./split_audio.ps1 -InputFile <ruta-al-archivo-de-audio> -SplitTime <HH:mm:ss>
-```
+El flujo de trabajo principal es:
+1.  Dividir un archivo de audio grande en partes más pequeñas.
+2.  Transcribir cada parte a texto crudo.
+3.  Unir, corregir y dar formato a todo el texto en un documento final.
+
+---
+
+### **Paso 1: Dividir un archivo de audio (Opcional)**
+
+Si tienes un archivo de audio muy largo, usa el script `split_audio.ps1` para dividirlo en segmentos. Los archivos resultantes se guardarán en el mismo directorio que el archivo original.
 
 **Ejemplo:**
 Para dividir un archivo llamado `mi_audio_largo.mp3` en partes de 5 minutos:
 ```powershell
-./split_audio.ps1 -InputFile .\data\audio1503657559_sample.wav -SplitTime 00:05:00
+./split_audio.ps1 -InputFile .\data\raw\mi_audio_largo.mp3 -SplitTime 00:05:00
 ```
-Esto generará archivos como `audio1503657559_sample_part_001.wav`, `audio1503657559_sample_part_002.wav`, etc.
+Esto generará archivos como `mi_audio_largo_part_001.wav`, `mi_audio_largo_part_002.wav`, etc.
 
-### 2. Procesar los archivos de audio
+---
 
-Una vez que tengas los archivos de audio divididos (o cualquier archivo `.wav` que desees procesar), colócalos en el directorio `data`.
+### **Paso 2: Transcribir los archivos de audio**
 
-Luego, ejecuta el script `process_audio.ps1`:
+Coloca todos los archivos `.wav` que desees procesar en un solo directorio (por ejemplo, `data/processed`).
+
+Luego, ejecuta el script `process_audio.ps1`. Este buscará todos los archivos `.wav` y ejecutará el proceso de transcripción para cada uno.
 
 ```powershell
 ./process_audio.ps1
 ```
 
-Este script buscará todos los archivos `.wav` en la carpeta `data` y ejecutará el proceso de transcripción para cada uno, utilizando el módulo `speech2text`.
+El resultado de cada transcripción se guardará como un archivo `.json` dentro de la carpeta `jobs`.
 
-### 3. Uso directo del módulo de Python
+---
 
-También puedes ejecutar el módulo de Python directamente para procesar un solo archivo.
+### **Paso 3: Generar el documento final (Post-procesamiento)**
 
-```powershell
-python -m speech2text transcribe ".\data\audio1503657559_sample.wav"
+Este es el paso final. Una vez que todas las partes del audio han sido transcritas, puedes usar el siguiente comando para unir todos los textos en un único documento Markdown (`.md`).
+
+**Ejemplo:**
+Si los archivos de tu transcripción están en la carpeta `jobs/mesa_1/`, ejecuta:
+```bash
+python -m speech2text post-process "jobs/mesa_1/"
 ```
+
+Esto leerá todos los archivos `.json` de esa carpeta, los procesará con el modelo de lenguaje y creará un documento final llamado `mesa_1.md` en la raíz del proyecto.
